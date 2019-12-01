@@ -6,7 +6,7 @@ a pure lightweight event-loop based on a single thread
 <dependency>
     <groupId>com.zmannotes</groupId>
     <artifactId>event-loop</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.0.1</version>
 </dependency>
 ```
 
