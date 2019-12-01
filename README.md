@@ -42,5 +42,7 @@ public interface EventLoop {
 
 ## Example
 ```java
-
+EventLoop eventLoop = new DefaultEventLoop();
+Future<Long> future = eventLoop.submit(TaskType.COMPUTE.name(), ()-> 1+1L);
+Assert.assertEquals(2L, future.get().longValue());
 ```
