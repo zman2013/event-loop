@@ -1,3 +1,7 @@
+[![Travis Build](https://api.travis-ci.org/zman2013/event-loop.svg?branch=master)](https://api.travis-ci.org/zman2013/event-loop.svg?branch=master)
+[![Coverage Status](https://coveralls.io/repos/github/zman2013/event-loop/badge.svg?branch=master)](https://coveralls.io/github/zman2013/event-loop?branch=master)
+
+
 # event-loop
 a pure lightweight event-loop based on a single thread
 
@@ -33,5 +37,10 @@ public interface EventLoop {
      */
     Future<?> shutdown();
 }
+
+```
+
+## Example
+```java
 
 ```
