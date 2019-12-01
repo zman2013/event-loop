@@ -1,17 +1,8 @@
-# event-loop
-a pure lightweight event-loop based on a single thread
+package com.zman.thread.eventloop;
 
-## Dependency
-```xml
-<dependency>
-    <groupId>com.zmannotes</groupId>
-    <artifactId>event-loop</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
-</dependency>
-```
+import java.util.concurrent.Callable;
+import java.util.concurrent.Future;
 
-## Interface
-```java
 /**
  * eventloop一旦创建就会开始运行loop，无需start，直接可以submit任务
  */
@@ -33,5 +24,3 @@ public interface EventLoop {
      */
     Future<?> shutdown();
 }
-
-```
