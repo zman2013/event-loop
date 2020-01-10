@@ -1,5 +1,6 @@
 package com.zman.thread.eventloop;
 
+import com.zman.thread.eventloop.exception.QueueExceedException;
 import com.zman.thread.eventloop.impl.DefaultEventLoop;
 import com.zman.thread.eventloop.impl.TaskType;
 import org.junit.Assert;
@@ -14,21 +15,21 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class DefaultEventLoopTest {
 
     @Test
-    public void test() throws ExecutionException, InterruptedException {
+    public void test() throws ExecutionException, InterruptedException, QueueExceedException {
         EventLoop eventLoop = new DefaultEventLoop("event-loop");
         Future<Long> future = eventLoop.submit(TaskType.COMPUTE.name(), ()-> 1+1L);
         Assert.assertEquals(2L, future.get().longValue());
     }
 
     @Test(expected = TimeoutException.class)
-    public void testScheduledTask() throws ExecutionException, InterruptedException, TimeoutException {
+    public void testScheduledTask() throws ExecutionException, InterruptedException, TimeoutException, QueueExceedException {
         EventLoop eventLoop = new DefaultEventLoop("event-loop");
         Future<Long> future = eventLoop.submit(TaskType.COMPUTE.name(), ()-> 1+1L, 10, TimeUnit.MINUTES);
         Assert.assertEquals(2L, future.get(1, TimeUnit.MILLISECONDS).longValue());
     }
 
     @Test
-    public void testScheduledTaskWithImmediateTask() throws ExecutionException, InterruptedException, TimeoutException {
+    public void testScheduledTaskWithImmediateTask() throws ExecutionException, InterruptedException, TimeoutException, QueueExceedException {
         EventLoop eventLoop = new DefaultEventLoop("event-loop");
 
         Future<Long> future2 = eventLoop.submit(TaskType.COMPUTE.name(), ()-> 1+1L, 10, TimeUnit.MILLISECONDS);
@@ -38,7 +39,7 @@ public class DefaultEventLoopTest {
     }
 
     @Test
-    public void testScheduledTaskNoImmediateTask() throws ExecutionException, InterruptedException, TimeoutException {
+    public void testScheduledTaskNoImmediateTask() throws ExecutionException, InterruptedException, TimeoutException, QueueExceedException {
         EventLoop eventLoop = new DefaultEventLoop("event-loop");
 
         Future<Long> future = eventLoop.submit(TaskType.COMPUTE.name(), ()-> 1+1L, 10, TimeUnit.MILLISECONDS);
@@ -46,32 +47,26 @@ public class DefaultEventLoopTest {
     }
 
     @Test
-    public void testTaskQueueFull() throws InterruptedException {
+    public void testTaskQueueFull() throws InterruptedException, QueueExceedException {
         EventLoop eventLoop = new DefaultEventLoop("event-loop");
         eventLoop.shutdown();
 
-        ExecutionException e = null;
+        QueueExceedException e = null;
         for( int i = 0; i < 1001; i ++) {
-            Future<Long> future = eventLoop.submit(TaskType.COMPUTE.name(), () -> 1 + 1L, 10, TimeUnit.MINUTES);
-            if(future.isDone()){
-                try {
-                    future.get();
-                }catch (ExecutionException e1){
-                    e = e1;
-                }
+            try{
+                eventLoop.submit(TaskType.COMPUTE.name(), () -> 1 + 1L, 10, TimeUnit.MINUTES);
+            }catch (QueueExceedException e1){
+                e = e1;
             }
         }
         Assert.assertNotNull(e);
 
         e = null;
         for( int i = 0; i < 1001; i ++) {
-            Future<Long> future = eventLoop.submit(TaskType.COMPUTE.name(), () -> 1 + 1L);
-            if(future.isDone()){
-                try {
-                    future.get();
-                }catch (ExecutionException e1){
-                    e = e1;
-                }
+            try{
+                eventLoop.submit(TaskType.COMPUTE.name(), () -> 1 + 1L);
+            }catch (QueueExceedException e2){
+                e = e2;
             }
         }
         Assert.assertNotNull(e);
@@ -79,7 +74,7 @@ public class DefaultEventLoopTest {
 
 
     @Test
-    public void testBothTypeTask() throws InterruptedException {
+    public void testBothTypeTask() throws InterruptedException, QueueExceedException {
         EventLoop eventLoop = new DefaultEventLoop("event-loop");
         AtomicInteger c = new AtomicInteger(0);
 
@@ -98,7 +93,7 @@ public class DefaultEventLoopTest {
 
 
     @Test
-    public void testScheduleTaskNotReady() throws InterruptedException {
+    public void testScheduleTaskNotReady() throws InterruptedException, QueueExceedException {
         EventLoop eventLoop = new DefaultEventLoop("event-loop");
         AtomicInteger c = new AtomicInteger(0);
 
@@ -116,5 +111,16 @@ public class DefaultEventLoopTest {
     }
 
 
+    @Test
+    public void testSubmitRunnable() throws QueueExceedException, InterruptedException {
+        EventLoop eventLoop = new DefaultEventLoop("event-loop");
+        AtomicInteger c = new AtomicInteger(0);
+        eventLoop.submit(()->c.incrementAndGet());
+        eventLoop.submit(()->c.incrementAndGet(),1,TimeUnit.NANOSECONDS);
+
+        Thread.sleep(1);
+
+        Assert.assertEquals(2, c.get());
+    }
 
 }

@@ -25,6 +25,12 @@ public class ScheduledFutureTask<V>
         sequenceNumber = SEQUENCER++;
     }
 
+    ScheduledFutureTask(Runnable runnable, long time, TimeUnit timeUnit) {
+        super(runnable, null);
+        this.time = System.nanoTime() + timeUnit.toNanos(time);
+        sequenceNumber = SEQUENCER++;
+    }
+
 
     public long getDelay(TimeUnit unit) {
         return unit.convert(time - System.nanoTime(), NANOSECONDS);

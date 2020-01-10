@@ -10,7 +10,7 @@ a pure lightweight event-loop based on a single thread
 <dependency>
     <groupId>com.zmannotes</groupId>
     <artifactId>event-loop</artifactId>
-    <version>1.0.1</version>
+    <version>1.0.2</version>
 </dependency>
 ```
 
@@ -58,4 +58,8 @@ Assert.assertEquals(2L, future.get().longValue());
 
 Future<Long> future2 = eventLoop.submit(TaskType.COMPUTE.name(), ()-> 1+1L, 10, TimeUnit.MILLISECONDS);
 Assert.assertEquals(2L, future2.get(100, TimeUnit.MILLISECONDS).longValue());
+
+AtomicInteger c = new AtomicInteger(0);
+eventLoop.submit(()->c.incrementAndGet());
+eventLoop.submit(()->c.incrementAndGet(),1,TimeUnit.NANOSECONDS);
 ```

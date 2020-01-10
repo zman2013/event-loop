@@ -1,10 +1,8 @@
 package com.zman.thread.eventloop.impl;
 
 import com.zman.thread.eventloop.EventLoop;
+import com.zman.thread.eventloop.exception.QueueExceedException;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.concurrent.*;
 
@@ -36,18 +34,11 @@ public class DefaultEventLoop implements EventLoop, Runnable {
      */
     private Executor executor;
 
-    /**
-     * 队列满了返回异常Future
-     */
-    private static final FutureTask QUEUE_FUTURE_FUTURE = new FutureTask<>(() -> {
-        throw new RuntimeException("queue is full");
-    });
 
     private static final Runnable WAKEUP_TASK = () -> { /* Do nothing. */ };
 
 
     public DefaultEventLoop(String eventloopName) {
-        QUEUE_FUTURE_FUTURE.run();
         executor = Executors.newSingleThreadExecutor(r -> new Thread(r, eventloopName));
         executor.execute(this);
     }
@@ -69,6 +60,16 @@ public class DefaultEventLoop implements EventLoop, Runnable {
     }
 
     /**
+     * 队列中包含的最大任务个数
+     *
+     * @param maxQueueSize 任务个数
+     */
+    @Override
+    public void setMaxQueueSize(int maxQueueSize) {
+        this.maxQueueSize = maxQueueSize;
+    }
+
+    /**
      * 提交任务
      *
      * @param taskType 事件类型，用于区分不同类型的任务，用于做任务调度
@@ -76,13 +77,26 @@ public class DefaultEventLoop implements EventLoop, Runnable {
      * @return future
      */
     @Override
-    public <T> Future<T> submit(String taskType, Callable<T> task) {
+    public <T> Future<T> submit(String taskType, Callable<T> task) throws QueueExceedException {
         FutureTask<T> futureTask = new FutureTask<>(task);
         boolean success = taskQueue.offer(futureTask);
         if(success){
             return futureTask;
         }else{
-            return QUEUE_FUTURE_FUTURE;
+            throw new QueueExceedException();
+        }
+    }
+
+    /**
+     * 提交任务
+     *
+     * @param task 任务
+     */
+    @Override
+    public void submit(Runnable task) throws QueueExceedException {
+        boolean success = taskQueue.offer(task);
+        if(!success){
+            throw new QueueExceedException();
         }
     }
 
@@ -96,8 +110,26 @@ public class DefaultEventLoop implements EventLoop, Runnable {
      * @return future
      */
     @Override
-    public <T> Future<T> submit(String taskType, Callable<T> task, long timeout, TimeUnit timeUnit) {
+    public <T> Future<T> submit(String taskType, Callable<T> task, long timeout, TimeUnit timeUnit) throws QueueExceedException {
         ScheduledFutureTask<T> scheduledFutureTask = new ScheduledFutureTask<>(task, timeout, timeUnit);
+        tryPushToScheduleQueue(scheduledFutureTask);
+        return scheduledFutureTask;
+    }
+
+    /**
+     * 提交任务
+     *
+     * @param task     任务
+     * @param timeout  时间
+     * @param timeUnit 单位
+     */
+    @Override
+    public void submit(Runnable task, long timeout, TimeUnit timeUnit) throws QueueExceedException {
+        ScheduledFutureTask<Void> scheduledFutureTask = new ScheduledFutureTask<>(task, timeout, timeUnit);
+        tryPushToScheduleQueue(scheduledFutureTask);
+    }
+
+    void tryPushToScheduleQueue(ScheduledFutureTask scheduledFutureTask) throws QueueExceedException {
         if(scheduledTaskQueue.size()<maxQueueSize){
             scheduledTaskQueue.offer(scheduledFutureTask);
 
@@ -107,18 +139,17 @@ public class DefaultEventLoop implements EventLoop, Runnable {
             if(taskQueue.size()==0){
                 taskQueue.offer(WAKEUP_TASK);
             }
-
-            return scheduledFutureTask;
         }else{
-            return QUEUE_FUTURE_FUTURE;
+            throw new QueueExceedException();
         }
     }
 
-    public Future<String> shutdown() {
-        return submit(TaskType.COMPUTE.name(), () -> {
-            stop = true;
-            return "success";
-        });
+    public Future<Void> shutdown() {
+        ScheduledFutureTask<Void> scheduledFutureTask = new ScheduledFutureTask<>(
+                ()-> {stop = true;},
+                1, TimeUnit.NANOSECONDS);
+        scheduledTaskQueue.offer(scheduledFutureTask);  // 立刻停止，即使Queue满了，也加入到Queue中
+        return scheduledFutureTask;
     }
 
     /**
