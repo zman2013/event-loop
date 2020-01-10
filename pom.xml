@@ -4,7 +4,7 @@
 
     <groupId>com.zmannotes</groupId>
     <artifactId>event-loop</artifactId>
-    <version>1.0.2-SNAPSHOT</version>
+    <version>1.0.2</version>
 
     <name>java event-loop</name>
     <description>a pure lightweight event-loop.</description>
@@ -22,7 +22,7 @@
         <connection>scm:git:git@github.com:zman2013/event-loop.git</connection>
         <developerConnection>scm:git:git@github.com:zman2013/event-loop.git</developerConnection>
         <url>https://github.com/zman2013/event-loop</url>
-        <tag>HEAD</tag>
+        <tag>event-loop-1.0.2</tag>
     </scm>
 
 
