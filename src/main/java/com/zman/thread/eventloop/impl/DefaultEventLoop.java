@@ -5,15 +5,26 @@ import com.zman.thread.eventloop.EventLoop;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.concurrent.*;
 
 
-public class DefaultEventLoop implements EventLoop, Runnable{
+public class DefaultEventLoop implements EventLoop, Runnable {
 
     /**
-     * 任务容器：每中任务类型拥有独立的队列，用于任务优先级调度
+     * 每个队列包含的最大任务个数
      */
-    private final Map<String,BlockingQueue<Runnable>> taskContainer = new HashMap<>();
+    private int maxQueueSize = 1000;
+
+    /**
+     * 立即执行类型的任务队列
+     */
+    private final BlockingQueue<Runnable> taskQueue = new ArrayBlockingQueue<>(maxQueueSize+1);
+
+    /**
+     * 延迟支持类型的任务队列
+     */
+    private final PriorityQueue<ScheduledFutureTask> scheduledTaskQueue = new PriorityQueue<>(16);
 
     /**
      * 是否停止了event loop
@@ -23,14 +34,25 @@ public class DefaultEventLoop implements EventLoop, Runnable{
     /**
      * event loop的执行器
      */
-    private Executor executor = Executors.newSingleThreadExecutor(r -> new Thread(r, "event-loop-thread"));
+    private Executor executor;
+
+    /**
+     * 队列满了返回异常Future
+     */
+    private static final FutureTask QUEUE_FUTURE_FUTURE = new FutureTask<>(() -> {
+        throw new RuntimeException("queue is full");
+    });
+
+    private static final Runnable WAKEUP_TASK = () -> { /* Do nothing. */ };
 
 
-    public DefaultEventLoop(){
+    public DefaultEventLoop(String eventloopName) {
+        QUEUE_FUTURE_FUTURE.run();
+        executor = Executors.newSingleThreadExecutor(r -> new Thread(r, eventloopName));
         executor.execute(this);
     }
 
-    public void run(){
+    public void run() {
         do {
             Runnable task = takeTask();
 
@@ -55,20 +77,45 @@ public class DefaultEventLoop implements EventLoop, Runnable{
      */
     @Override
     public <T> Future<T> submit(String taskType, Callable<T> task) {
-        BlockingQueue<Runnable> queue = taskContainer.computeIfAbsent(taskType, _v -> new LinkedBlockingQueue<>(1000));
         FutureTask<T> futureTask = new FutureTask<>(task);
-        boolean success = queue.offer(futureTask);
-        if( !success ){
-            FutureTask<T> queueFullException = new FutureTask<>(()->{throw new RuntimeException("queue is full");});
-            queueFullException.run();
-            return queueFullException;
-        }else {
+        boolean success = taskQueue.offer(futureTask);
+        if(success){
             return futureTask;
+        }else{
+            return QUEUE_FUTURE_FUTURE;
         }
     }
 
-    public Future<String> shutdown(){
-        return submit(TaskType.COMPUTE.name(), ()->{
+    /**
+     * 提交任务
+     *
+     * @param taskType 事件类型，用于区分不同类型的任务，用于做任务调度
+     * @param task     任务
+     * @param timeout  时间
+     * @param timeUnit 单位
+     * @return future
+     */
+    @Override
+    public <T> Future<T> submit(String taskType, Callable<T> task, long timeout, TimeUnit timeUnit) {
+        ScheduledFutureTask<T> scheduledFutureTask = new ScheduledFutureTask<>(task, timeout, timeUnit);
+        if(scheduledTaskQueue.size()<maxQueueSize){
+            scheduledTaskQueue.offer(scheduledFutureTask);
+
+            // eventloop刚启动时，taskQueue和scheduledTaskQueue都没有任务，此时eventloop会await(taskQueue.take)
+            // 需要再scheduled已经加入到scheduledTaskQueue后再将WAKEUP_TASK加入到taskQueue，否则WAKEUP_TASK可能很快执行完，
+            // 结果eventloop又回到await状态
+            if(taskQueue.size()==0){
+                taskQueue.offer(WAKEUP_TASK);
+            }
+
+            return scheduledFutureTask;
+        }else{
+            return QUEUE_FUTURE_FUTURE;
+        }
+    }
+
+    public Future<String> shutdown() {
+        return submit(TaskType.COMPUTE.name(), () -> {
             stop = true;
             return "success";
         });
@@ -78,25 +125,24 @@ public class DefaultEventLoop implements EventLoop, Runnable{
      * @return 一个任务，或者null
      */
     private Runnable takeTask() {
-        Runnable futureTask = null;
+        Runnable task = null;
         try {
-            Iterator<BlockingQueue<Runnable>> iterator = taskContainer.values().iterator();
-            while( iterator.hasNext() ){
-                BlockingQueue<Runnable> futureTasks = iterator.next();
-                if( !futureTasks.isEmpty() ){
-                    futureTask = futureTasks.take();
-                    break;
+            ScheduledFutureTask scheduledTask = scheduledTaskQueue.peek();
+            if (scheduledTask != null) {
+                long delayNano = scheduledTask.getDelay(TimeUnit.NANOSECONDS);
+                if (delayNano > 0) {
+                    task = taskQueue.poll(delayNano, TimeUnit.NANOSECONDS);
+                } else {
+                    task = scheduledTaskQueue.poll();
                 }
-            }
-
-            if( futureTask == null ){
-                Thread.sleep(10);   // 防止cpu空转
+            } else {
+                task = taskQueue.take();
             }
         } catch (InterruptedException e) {
             // ignore
         }
 
-        return futureTask;
+        return task;
     }
 
 
@@ -106,5 +152,6 @@ public class DefaultEventLoop implements EventLoop, Runnable{
     private void updateLastExecutionTime() {
         // todo
     }
+
 
 }
